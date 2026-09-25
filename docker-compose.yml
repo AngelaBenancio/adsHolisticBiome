@@ -1,0 +1,109 @@
+# Panel en https://huellero.adsholistic.com via el Traefik ya existente.
+# El reloj ZKTeco entra directo al puerto 8088 del host, sin Traefik.
+# MySQL no publica puertos.
+# En el VPS: cp .env.example .env, completa las claves y ejecuta
+#   docker compose up -d --build
+
+name: asistencias
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en el .env de la raiz}
+      MYSQL_DATABASE: ${DB_NAME:-asistencias}
+      MYSQL_USER: ${DB_USER:-asistencias}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en el .env de la raiz}
+      TZ: America/Lima
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=-05:00
+    volumes:
+      - asistencias-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - interna
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      TZ: America/Lima
+      PORT: "8088"
+      TRUST_PROXY: "false"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: ${DB_USER:-asistencias}
+      DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en el .env de la raiz}
+      DB_NAME: ${DB_NAME:-asistencias}
+      DB_CONNECTION_LIMIT: ${DB_CONNECTION_LIMIT:-10}
+      API_KEY: ${API_KEY:?Define API_KEY en el .env de la raiz}
+      ADMIN_USUARIO: ${ADMIN_USUARIO:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Define ADMIN_PASSWORD en el .env de la raiz}
+      ADMIN_NOMBRE: ${ADMIN_NOMBRE:-Administrador}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://huellero.adsholistic.com}
+      ADMS_COMM_KEY: ${ADMS_COMM_KEY:-}
+      ADMS_IP_ALLOWLIST: ${ADMS_IP_ALLOWLIST:-}
+      ADMS_BODY_LIMIT: ${ADMS_BODY_LIMIT:-20mb}
+      CIERRE_AUTOMATICO: ${CIERRE_AUTOMATICO:-true}
+      CIERRE_CRON: "${CIERRE_CRON:-59 23 * * *}"
+    ports:
+      - "8088:8088"
+    volumes:
+      - asistencias-logs:/app/logs
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8088/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - interna
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n-setup_app-network
+      - traefik.http.routers.huellero.rule=Host(`huellero.adsholistic.com`)
+      - traefik.http.routers.huellero.entrypoints=websecure
+      - traefik.http.routers.huellero.tls=true
+      - traefik.http.routers.huellero.tls.certresolver=${TRAEFIK_CERTRESOLVER:-mytlschallenge}
+      - traefik.http.services.huellero.loadbalancer.server.port=80
+    networks:
+      - interna
+      - n8n-setup_app-network
+
+networks:
+  interna:
+  n8n-setup_app-network:
+    external: true
+
+volumes:
+  asistencias-mysql:
+  asistencias-logs:
