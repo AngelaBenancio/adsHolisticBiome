@@ -11,6 +11,7 @@ import type {
 import { esFechaFutura, formatLima } from '../utils/datetime';
 import { logger } from '../utils/logger';
 import { procesarMarcacionesNuevas, type MarcaNueva } from './calculo.service';
+import { sincronizarMarcacion } from './hecom-sync.service';
 
 interface IdFila extends RowDataPacket {
   id: number;
@@ -165,6 +166,17 @@ export async function ingerirMarcaciones(
     throw error;
   } finally {
     conexion.release();
+  }
+
+  for (const marcaNueva of nuevas) {
+    void sincronizarMarcacion({
+      id: marcaNueva.id,
+      pin: marcaNueva.pin,
+      tipo_evento: marcaNueva.tipoEvento,
+      fecha_hora: marcaNueva.fechaHora,
+    }).catch((error: unknown) => {
+      logger.error('Hecom Club no recibio la marcacion', error);
+    });
   }
 
   if (nuevas.length > 0) {

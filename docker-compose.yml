@@ -59,6 +59,8 @@ services:
       ADMS_BODY_LIMIT: ${ADMS_BODY_LIMIT:-20mb}
       CIERRE_AUTOMATICO: ${CIERRE_AUTOMATICO:-true}
       CIERRE_CRON: "${CIERRE_CRON:-59 23 * * *}"
+      HECOM_SYNC_URL: ${HECOM_SYNC_URL:-}
+      HECOM_SYNC_SECRET: ${HECOM_SYNC_SECRET:-}
     ports:
       - "8088:8088"
     volumes:
