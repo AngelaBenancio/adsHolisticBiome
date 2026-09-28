@@ -1,7 +1,21 @@
+import { normalizarFechaHora } from '../utils/datetime';
 import { logger } from '../utils/logger';
 
 function variable(nombre: string): string {
   return process.env[nombre]?.trim() ?? '';
+}
+
+/**
+ * La hora guardada es de pared en Lima, sin zona.
+ * Hecom Club hace `new Date(timestamp)` en un servidor UTC: sin offset,
+ * "09:20" se lee como 09:20 UTC y se muestra como 04:20 en Lima.
+ * El sufijo -05:00 conserva los mismos dígitos de reloj.
+ */
+function timestampLima(valor: unknown): string {
+  const texto = String(valor ?? '').trim();
+  const pared = normalizarFechaHora(texto);
+  if (!pared) return texto;
+  return `${pared.replace(' ', 'T')}-05:00`;
 }
 
 /**
@@ -17,7 +31,7 @@ export async function sincronizarMarcacion(marca: any): Promise<void> {
     const cuerpo = {
       biotimeUserId: String(marca.pin),
       tipo: Number(marca.tipo_evento),
-      timestamp: String(marca.fecha_hora),
+      timestamp: timestampLima(marca.fecha_hora),
       rawId: Number(marca.id),
     };
     const respuesta = await fetch(url, {
